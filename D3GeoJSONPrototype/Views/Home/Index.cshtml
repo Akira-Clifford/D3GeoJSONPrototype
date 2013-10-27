@@ -1,0 +1,172 @@
+﻿@{
+    ViewBag.Title = "Home Page";
+}
+
+@section scripts
+{
+    <style>
+        .active {
+            fill: orange !important;
+        }
+    </style>
+
+    <script type="text/javascript">
+         function RenderMap() {
+            var mapContainer = $('#mapContainer');
+
+            var width = mapContainer.width(),
+                height = 400;
+
+            var svg = d3.select("#wardMap")
+                .append("svg")
+                .attr("width", width)
+                .attr("height", height);
+
+            svg.append("rect")
+                .attr('width', width)
+                .attr('height', height)
+                //.style('stroke', 'black')
+                .style('fill', 'none');
+
+            d3.json('@Url.Action("MapData")', function (error, data) {
+                // create a first guess for the projection
+                var center = d3.geo.centroid(data)
+                var scale = 150;
+                var offset = [width / 2, height / 2];
+                var projection = d3.geo.mercator().scale(scale).center(center)
+                    .translate(offset);
+
+                // create the path
+                var path = d3.geo.path().projection(projection);
+
+                // using the path determine the bounds of the current map and use
+                // these to determine better values for the scale and translation
+                var bounds = path.bounds(data);
+                var hscale = scale * width / (bounds[1][0] - bounds[0][0]);
+                var vscale = scale * height / (bounds[1][1] - bounds[0][1]);
+                var scale = (hscale < vscale) ? hscale : vscale;
+                var offset = [width - (bounds[0][0] + bounds[1][0]) / 2,
+                                  height - (bounds[0][1] + bounds[1][1]) / 2];
+
+                // new projection
+                projection = d3.geo.mercator().center(center)
+                  .scale(scale).translate(offset);
+                path = path.projection(projection);
+
+                svg.selectAll("path").data(data.features).enter().append("path")
+                    .attr("d", path)
+                    .style("fill", function (item) {
+                        return item.properties.StatusColor;
+                    })
+                    .style("stroke-width", "1")
+                    .style("stroke", "black")
+                    .on("click", clicked);
+            });
+
+            function clicked(d) {
+                svg.selectAll("path")
+                    .classed("active", function (d2) {
+                        return d2 === d;
+                    });
+
+                Barium.Dashboard.SubDivisionModel.GetData(d.properties.NAME, d.properties.SCODE_NAME);
+            }
+        }
+
+        function SubDivisionEntity(parrent, data) {
+            var self = this;
+            // Data
+            self.WardName = ko.observable(data.WardId);
+            self.WardId = ko.observable(data.WardId);
+            self.SubDivisionId = ko.observable(data.SubDivisionId);
+            self.Applicants = ko.observable(data.Applicants);
+            self.Interviewed = ko.observable(data.Interviewed);
+            self.Hired = ko.observable(data.Hired);
+            self.Predictive = ko.observable(data.Predictive);
+            self.StatusClass = ko.observable(data.StatusClass);
+        }
+
+        function SubDivisionViewModel() {
+            var self = this;
+
+            // Data
+            self.WardName = ko.observable();
+            self.Items = ko.observableArray([]);
+
+            self.GetData = function (wardName, wardId) {
+                self.Items([]);
+
+                self.WardName(wardName);
+
+                $.ajax({
+                    url: '@Url.Action("MapSubDivisionData")',
+                    data: {
+                        wardId: wardId
+                    },
+                    cache: false
+                })
+                .fail(function (qxhr, status, errorThrown) {
+                    
+                })
+                .done(function (data) {
+                    if ($.isArray(data) == false) {
+                        self.Errors.push("The data requested was not formatted correctly.");
+                        return;
+                    }
+
+                    // refresh items collection
+                    var collection = $.map(data, function (item) { return new SubDivisionEntity(self, item) });
+                    self.Items(collection);
+                });
+            };
+        }
+
+        Barium = {};
+        Barium.Dashboard = Barium.Dashboard || {};
+        Barium.Dashboard.SubDivisionModel || {};
+
+        $(document).ready(function () {
+            Barium.Dashboard.SubDivisionModel = new SubDivisionViewModel();
+
+            ko.applyBindings(Barium.Dashboard.SubDivisionModel, $('#wardDataTable').get(0));
+
+            RenderMap();
+        });
+    </script>
+
+    <script>
+
+    </script>
+}
+
+<div class="row">
+    <div id="mapContainer" class="col-md-12">
+        <div id="wardMap"></div>
+    </div>
+</div>
+
+<div class="row" id="wardDataTable">
+    <div class="col-md-12">
+        <h1 data-bind="text: WardName"></h1>
+        <table class="table table-striped table-condensed" data-bind="visible: Items().length > 0" style="display: none;">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Applicants</th>
+                    <th>Interviewed</th>
+                    <th>Hired</th>
+                    <th>Predicitve</th>
+                </tr>
+            </thead>
+            <tbody data-bind="foreach: Items">
+                <tr data-bind="css: StatusClass">
+                    <td data-bind="text: SubDivisionId"></td>
+                    <td data-bind="text: Applicants"></td>
+                    <td data-bind="text: Interviewed"></td>
+                    <td data-bind="text: Hired"></td>
+                    <td data-bind="text: Predictive"></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
